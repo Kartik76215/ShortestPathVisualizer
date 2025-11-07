@@ -1,81 +1,165 @@
 #include <emscripten/bind.h>
-#include <queue>
 #include <vector>
+#include <queue>
 #include <string>
 #include <cmath>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
-
 using namespace std;
 using namespace emscripten;
 
 struct Node {
     int r, c;
-    double f, g, h;
-    bool operator>(const Node& other) const { return f > other.f; }
+    double f, g;
+    Node(int r, int c, double f = 0, double g = 0) : r(r), c(c), f(f), g(g) {}
 };
 
-string findPath(int sr, int sc, int er, int ec) {
-    const int ROWS = 10, COLS = 10; // fixed grid for now
-    vector<vector<int>> grid(ROWS, vector<int>(COLS, 0));
+inline int encode(int r, int c, int cols) { return r * cols + c; }
+inline pair<int, int> decode(int key, int cols) { return {key / cols, key % cols}; }
 
-    auto heuristic = [&](int r, int c) {
-        return static_cast<double>(abs(er - r) + abs(ec - c));
+vector<pair<int, int>> getNeighbors(int r, int c, int rows, int cols) {
+    vector<pair<int, int>> nbrs;
+    if (r > 0) nbrs.push_back({r - 1, c});
+    if (c > 0) nbrs.push_back({r, c - 1});
+    if (r < rows - 1) nbrs.push_back({r + 1, c});
+    if (c < cols - 1) nbrs.push_back({r, c + 1});
+    return nbrs;
+}
+
+double heuristic(int r1, int c1, int r2, int c2) {
+    return abs(r1 - r2) + abs(c1 - c2); // Manhattan
+}
+
+string toJSON(vector<pair<int, int>> visited, vector<pair<int, int>> path) {
+    ostringstream oss;
+    oss << "{\"visited\":[";
+    for (size_t i = 0; i < visited.size(); i++) {
+        oss << "[" << visited[i].first << "," << visited[i].second << "]";
+        if (i + 1 < visited.size()) oss << ",";
+    }
+    oss << "],\"path\":[";
+    for (size_t i = 0; i < path.size(); i++) {
+        oss << "[" << path[i].first << "," << path[i].second << "]";
+        if (i + 1 < path.size()) oss << ",";
+    }
+    oss << "]}";
+    return oss.str();
+}
+
+string findPath(
+    string algo, int sr, int sc, int er, int ec,
+    string walls, int rows, int cols
+) {
+    vector<vector<int>> grid(rows, vector<int>(cols, 0));
+    for (int i = 0; i < (int)walls.size() && i < rows * cols; i++) {
+        grid[i / cols][i % cols] = (walls[i] == '1');
+    }
+
+    vector<pair<int, int>> visited;
+    unordered_map<int, int> parent;
+
+    auto inBounds = [&](int r, int c) {
+        return r >= 0 && c >= 0 && r < rows && c < cols && grid[r][c] == 0;
     };
 
-    priority_queue<Node, vector<Node>, greater<Node>> open;
-    vector<vector<double>> gScore(ROWS, vector<double>(COLS, 1e9));
-    vector<vector<pair<int, int>>> parent(ROWS, vector<pair<int, int>>(COLS, {-1, -1}));
+    // BFS
+    if (algo == "bfs") {
+        queue<pair<int, int>> q;
+        unordered_set<int> seen;
+        int startKey = encode(sr, sc, cols);
+        q.push({sr, sc});
+        seen.insert(startKey);
 
-    gScore[sr][sc] = 0;
-    open.push({sr, sc, heuristic(sr, sc), 0.0, heuristic(sr, sc)});
+        while (!q.empty()) {
+            auto [r, c] = q.front(); q.pop();
+            visited.push_back({r, c});
+            if (r == er && c == ec) break;
 
-    int dr[4] = {-1, 1, 0, 0};
-    int dc[4] = {0, 0, -1, 1};
-
-    while (!open.empty()) {
-        Node cur = open.top();
-        open.pop();
-
-        if (cur.r == er && cur.c == ec) break;
-
-        for (int i = 0; i < 4; ++i) {
-            int nr = cur.r + dr[i];
-            int nc = cur.c + dc[i];
-            if (nr < 0 || nc < 0 || nr >= ROWS || nc >= COLS) continue;
-
-            double ng = gScore[cur.r][cur.c] + 1.0;
-            if (ng < gScore[nr][nc]) {
-                gScore[nr][nc] = ng;
-                parent[nr][nc] = {cur.r, cur.c};
-                open.push({nr, nc, ng + heuristic(nr, nc), ng, heuristic(nr, nc)});
+            for (auto [nr, nc] : getNeighbors(r, c, rows, cols)) {
+                int nk = encode(nr, nc, cols);
+                if (!inBounds(nr, nc) || seen.count(nk)) continue;
+                seen.insert(nk);
+                parent[nk] = encode(r, c, cols);
+                q.push({nr, nc});
             }
         }
     }
 
+    // Dijkstra
+    else if (algo == "dijkstra") {
+        struct Item { int key; double dist; bool operator>(const Item& o) const { return dist > o.dist; } };
+        priority_queue<Item, vector<Item>, greater<Item>> pq;
+        unordered_map<int, double> dist;
+        int startKey = encode(sr, sc, cols);
+        dist[startKey] = 0;
+        pq.push({startKey, 0});
+
+        while (!pq.empty()) {
+            auto [key, d] = pq.top(); pq.pop();
+            auto [r, c] = decode(key, cols);
+            if (dist[key] < d) continue;
+            visited.push_back({r, c});
+            if (r == er && c == ec) break;
+
+            for (auto [nr, nc] : getNeighbors(r, c, rows, cols)) {
+                if (!inBounds(nr, nc)) continue;
+                int nk = encode(nr, nc, cols);
+                double nd = d + 1;
+                if (!dist.count(nk) || nd < dist[nk]) {
+                    dist[nk] = nd;
+                    parent[nk] = key;
+                    pq.push({nk, nd});
+                }
+            }
+        }
+    }
+
+    // A*
+    else {
+        struct Item { int key; double f, g; bool operator>(const Item& o) const { return f > o.f; } };
+        priority_queue<Item, vector<Item>, greater<Item>> open;
+        unordered_map<int, double> g;
+        int startKey = encode(sr, sc, cols);
+        int endKey = encode(er, ec, cols);
+        g[startKey] = 0;
+        open.push({startKey, heuristic(sr, sc, er, ec), 0});
+
+        while (!open.empty()) {
+            auto [key, f, gScore] = open.top(); open.pop();
+            auto [r, c] = decode(key, cols);
+            visited.push_back({r, c});
+            if (key == endKey) break;
+
+            for (auto [nr, nc] : getNeighbors(r, c, rows, cols)) {
+                if (!inBounds(nr, nc)) continue;
+                int nk = encode(nr, nc, cols);
+                double ng = g[key] + 1;
+                if (!g.count(nk) || ng < g[nk]) {
+                    g[nk] = ng;
+                    parent[nk] = key;
+                    double fScore = ng + heuristic(nr, nc, er, ec);
+                    open.push({nk, fScore, ng});
+                }
+            }
+        }
+    }
+
+    // reconstruct path
     vector<pair<int, int>> path;
-    int r = er, c = ec;
-    while (r != -1 && c != -1) {
+    int key = encode(er, ec, cols);
+    unordered_set<int> visitedSet;
+    while (parent.count(key) && !visitedSet.count(key)) {
+        visitedSet.insert(key);
+        auto [r, c] = decode(key, cols);
         path.push_back({r, c});
-        auto p = parent[r][c];
-        r = p.first;
-        c = p.second;
+        key = parent[key];
     }
-
     reverse(path.begin(), path.end());
-
-    // Return valid JSON format like [[0,0],[1,0],[2,0]]
-    ostringstream oss;
-    oss << "[";
-    for (size_t i = 0; i < path.size(); ++i) {
-        oss << "[" << path[i].first << "," << path[i].second << "]";
-        if (i + 1 < path.size()) oss << ",";
-    }
-    oss << "]";
-    return oss.str();
+    return toJSON(visited, path);
 }
 
-// Bind C++ to JS
 EMSCRIPTEN_BINDINGS(pathfinder_module) {
     emscripten::function("findPath", &findPath);
 }

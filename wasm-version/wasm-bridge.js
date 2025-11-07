@@ -1,11 +1,9 @@
-// wasm-bridge.js — stable WebAssembly bridge for Emscripten output
 let wasmModule = null;
 
 export async function initWasm() {
   if (wasmModule) return wasmModule;
 
   try {
-    // Load the generated Emscripten module dynamically if not already loaded
     if (typeof PathModule === "undefined") {
       await new Promise((resolve, reject) => {
         const script = document.createElement("script");
@@ -16,10 +14,10 @@ export async function initWasm() {
       });
     }
 
-    // Initialize WebAssembly module
     wasmModule = await PathModule({
-      locateFile: (file) => `./${file}`, // ensures .wasm file is found
-    });
+  locateFile: (file) => `./${file}`,
+  });
+
 
     console.log("✅ WebAssembly module loaded successfully!");
     return wasmModule;
@@ -29,30 +27,12 @@ export async function initWasm() {
   }
 }
 
-// Wrapper to call the C++ findPath() function safely
-export async function findPath(sr, sc, er, ec) {
-  if (!wasmModule) await initWasm();
-
+export function findPath(wasm, algo, sr, sc, er, ec, walls, rows, cols) {
   try {
-    // Call the exported WASM function
-    const rawResult = wasmModule.ccall(
-      "findPath", // C++ function name
-      "string",   // return type
-      ["number", "number", "number", "number"], // arg types
-      [sr, sc, er, ec] // arg values
-    );
-
-    // Clean the returned string (remove trailing nulls/newlines)
-    const cleaned = rawResult?.trim().replace(/\0/g, "") ?? "[]";
-
-    console.log("📦 Cleaned WASM output:", cleaned);
-
-    // Parse to usable JSON
-    const parsed = JSON.parse(cleaned);
-
-    return parsed;
+    const result = wasm.findPath(algo, sr, sc, er, ec, walls, rows, cols);
+    console.log("📦 WASM output:", result);
+    return result;
   } catch (err) {
-    console.error("⚠️ Error calling findPath:", err);
-    throw err;
+    console.error("❌ Error calling findPath:", err);
   }
 }
