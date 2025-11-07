@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shortest Path Visualizer</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a0b1f, #ff8a00);
+      color: #fff8e7;
+      font-family: "Inter", sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+    h1 { font-size: 2em; margin-bottom: 10px; }
+    p { opacity: 0.9; margin-bottom: 30px; }
+    a {
+      text-decoration: none;
+      color: #1a0b1f;
+      background: linear-gradient(90deg, #ff8a00, #ff2e63);
+      padding: 14px 26px;
+      border-radius: 10px;
+      font-weight: 600;
+      margin: 8px;
+      display: inline-block;
+      transition: transform 0.2s ease;
+    }
+    a:hover { transform: scale(1.07); }
+  </style>
+</head>
+<body>
+  <h1>🧭 Shortest Path Visualizer</h1>
+  <p>Choose a version below to explore pathfinding algorithms in action.</p>
+  <a href="classic-version/">Classic JavaScript Version</a>
+  <a href="wasm-version/">WebAssembly (C++ Version)</a>
+  <p style="margin-top: 40px; font-size: 0.85em;">Created by <b>@Kartik76215</b></p>
+</body>
+</html>
